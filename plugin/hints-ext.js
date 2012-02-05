@@ -1146,5 +1146,90 @@ case 2: {
             this._processHints(true);
     };
 }break;
+// <Return> なしで unique になるようにする。かつ hint をできるだけ短くする
+case 3: {
+    let cache = {};
+
+    function getHintInfo(self, base) {
+        let hintCount = self._validHints.length;
+        if (base == cache.base && hintCount == cache.hintCount) {
+            return cache;
+        }
+        let longDigit = 1;
+        let longHintCountMax = base;
+        while (longHintCountMax < hintCount) {
+            longHintCountMax *= base;
+            longDigit++;
+        }
+        let shortHintCountMax = longHintCountMax / base;
+        let shortHintCount = Math.floor((longHintCountMax - hintCount) / (base - 1));
+        let ret = {
+            base: base,
+            hintCount: hintCount,
+            shortDigit: longDigit - 1,
+            shortHintCount: shortHintCount,
+            shortHintOffset: shortHintCountMax - shortHintCount,
+            longDigit: longDigit
+        };
+        cache = ret;
+        return ret;
+    }
+
+    hints._chars2num = function(chars) {
+        let hintchars = options.hintchars;
+        let base = hintchars.length;
+        let hintInfo = getHintInfo(this, base);
+        let digit = chars.length;
+
+        var num = 0;
+        for (let i = 0; i < digit; ++i) {
+            num = num * base + hintchars.indexOf(chars[i]);
+        }
+
+        if (digit < hintInfo.longDigit) {
+            num -= hintInfo.shortHintOffset;
+            if (num < 0) {
+                // invalid value
+                num = hintInfo.hintCount;
+            }
+        }
+        else {
+            num += hintInfo.shortHintCount;
+        }
+        return num + 1;
+    };
+    hints._num2chars = function(num) {
+        let hintchars = options.hintchars;
+        let base = hintchars.length;
+        let hintInfo = getHintInfo(this, base);
+
+        num--;
+        let digit;
+        if (num < hintInfo.shortHintCount) {
+            digit = hintInfo.shortDigit;
+            num += hintInfo.shortHintOffset;
+        }
+        else {
+            digit = hintInfo.longDigit;
+            num -= hintInfo.shortHintCount;
+        }
+
+        var chars = "";
+        for (let i = 0; i < digit; i++) {
+            chars = hintchars[num % base] + chars;
+            num = Math.floor(num / base);
+        }
+        return chars;
+    };
+    hints._checkUnique = function() {
+        if (this._hintNumber <= 0 || this._validHints.length < this._hintNumber) {
+            // 'hinttimeout' is not supported
+            return;
+        }
+
+        // we have a unique hint
+        this._processHints(true);
+    };
+} break;
 }
 }).call(this);
