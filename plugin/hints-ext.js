@@ -1222,7 +1222,28 @@ case 3: {
         return chars;
     };
     hints._checkUnique = function() {
-        if (this._hintNumber <= 0 || this._validHints.length < this._hintNumber) {
+        if (this._hintNumber <= 0)
+            return;
+
+        if (this._validHints.length < this._hintNumber) {
+            // 入力中か誤入力の場合
+            let hintchars = options.hintchars;
+            let base = hintchars.length;
+            let hintInfo = getHintInfo(this, base);
+            let str = this._hintNumberStr;
+            if (hintInfo.shortDigit < str.length) {
+                // 誤入力の文字をキャンセル
+                let oldId = this._hintNumber;
+                str = str.substr(0, str.length - 1);
+                this._hintNumberStr = str;
+                this._hintNumber = str ? this._chars2num(str) : 0;
+                this._showHints();
+                if (this._hintNumber == 0)
+                    this._prevInput = "text";
+                this._showActiveHint(null, oldId);
+                liberator.beep();
+            }
+
             // 'hinttimeout' is not supported
             return;
         }
