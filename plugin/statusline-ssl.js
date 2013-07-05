@@ -1,6 +1,6 @@
 // vim:set sw=4 ts=4 et:
 var INFO = //{{{
-<plugin name="statusline-ssl" version="0.0.1"
+xml`<plugin name="statusline-ssl" version="0.0.1"
         href="http://github.com/caisui/vimperator/blob/master/plugin/statusline-ssl.js"
         summary="status line SSL"
         xmlns="http://vimperator.org/namespaces/liberator">
@@ -19,13 +19,16 @@ var INFO = //{{{
             </example>
         </description>
     </item>
-</plugin>; //}}}
+</plugin>`; //}}}
+
 (function () {
-    highlight.loadCSS(<![CDATA[
+    if (Application.version[0] === "3") return ;
+    highlight.loadCSS(`
         StatusLineBroken    color: black; background: #FFa0a0 /* light-red */
+        StatusLineWeak      color: black; background: #FFFFa0 /* light-yellow */
         StatusLineSecure    color: black; background: #a0a0FF /* light-blue */
         StatusLineExtended  color: black; background: #a0FFa0 /* light-green */
-    ]]>.toString());
+    `);
 
     //let statusLine = document.getElementById("liberator-statusline");
     let statusLine = document.getElementById("liberator-status");
@@ -35,15 +38,20 @@ var INFO = //{{{
             if (this._state === (this._state = state)) return;
 
             const wpl = Ci.nsIWebProgressListener;
-            const wpl_security_bits = wpl.STATE_IS_SECURE | wpl.STATE_IS_BROKEN | wpl.STATE_IS_INSECURE | wpl.STATE_SECURE_HIGH | wpl.STATE_SECURE_MED | wpl.STATE_SECURE_LOW;
+            const wpl_security_bits = wpl.STATE_IS_SECURE | wpl.STATE_IS_BROKEN | wpl.STATE_IS_INSECURE |
+                                      wpl.STATE_SECURE_HIGH | wpl.STATE_SECURE_MED | wpl.STATE_SECURE_LOW |
+                                      wpl.STATE_IDENTITY_EV_TOPLEVEL;
             let level;
             switch (this._state & wpl_security_bits) {
+              case wpl.STATE_IS_SECURE | wpl.STATE_SECURE_HIGH | wpl.STATE_IDENTITY_EV_TOPLEVEL:
+                level = "Extended";
+                break;
               case wpl.STATE_IS_SECURE | wpl.STATE_SECURE_HIGH:
                 level = "Secure";
                 break;
               case wpl.STATE_IS_SECURE | wpl.STATE_SECURE_MED:
               case wpl.STATE_IS_SECURE | wpl.STATE_SECURE_LOW:
-                level = "Extended";
+                level = "Weak";
                 break;
               case wpl.STATE_IS_BROKEN:
                 level = "Broken";

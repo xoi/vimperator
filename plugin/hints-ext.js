@@ -1,8 +1,7 @@
 // vim: set sw=4 ts=4 fdm=marker et :
 //"use strict";
-// INFO {{{
-var INFO = xml`
-<plugin name="hints-ext" version="0.0.3"
+var INFO = //{{{
+xml`<plugin name="hints-ext" version="0.0.3"
         href="http://github.com/caisui/vimperator/blob/master/plugin/hints-ext.js"
         summary="Hints Ext"
         xmlns="http://vimperator.org/namespaces/liberator">
@@ -132,6 +131,9 @@ function HintsExt() {
 }
 
 function getUtils(win) win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils)
+function getCache(obj, key, fn) {
+    return obj[key] || (obj[key] = (fn || Object)());
+}
 
 if (!highlight.get("HintExtElem")) {
 highlight.loadCSS(`
@@ -153,6 +155,7 @@ styles.addSheet(true, "HintExtStyle", "*", `
 [liberator|highlight~='HintExtElem'] {
     position: absolute!important;
     margin: 0!important;
+    overflow: visible!important;
 }
 [liberator|highlight~='HintExt'] {
     position: absolute!important;
@@ -164,30 +167,25 @@ styles.addSheet(true, "HintExtStyle", "*", `
 [liberator|highlight~='HintExt']::before {
     content: attr(num);
 }
+[liberator|highlight~='HintExtActive'] {
+    z-index:65536!important;
+}
 `, true);
 }
 
 HintsExt.prototype = {
 init: function (hints) {
-    this._hintModes = {
-        __proto__: original._hintModes,
-        __iterator__: function iterator() {
-            var seen = {};
-            var names = Object.getOwnPropertyNames(this);
-            for (let [, name] in Iterator(names)) {
-                if (name === "__iterator__") continue;
-                yield [name, this[name]];
-                seen[name] = 1;
-            }
-            for (let name in this.__proto__) {
-                if (seen[name]) continue;
-                yield [name, this[name]];
-            }
-        },
-    };
-    this.simpleMaps = [];
     this._reset();
 },
+get _hintModes() getCache(userContext, "hints._hintModes@cache", function () {
+    var dest = {};
+    var src = original._hintModes;
+    for (var a in src) {
+        dest[a] = src[a];
+    }
+    return dest;
+}),
+get simpleMaps() getCache(userContext,"hints.simpleMaps@cache", Array),
 get previnput() this._prevInput,
 _reset: function () {
     statusline.updateInputBuffer("");
@@ -205,8 +203,16 @@ _reset: function () {
     }
     this._activeTimeout = null;
 },
-show: function _show(minor, filter, win) {
+show: function show(minor, filter, win) {
+    this._show({ minor: minor, filter: filter, win: win,});
+},
+_show: function _show(kwargs) {
     try {
+    var minor = kwargs.minor;
+    var filter = kwargs.filter;
+    var win = kwargs.win;
+    var adj = ("adj" in kwargs) ? kwargs.adj : !liberator.globalVariables.disable_adj_inline;
+
     let time = Date.now();
     const self = this;
     this._pageHints = [];
@@ -216,6 +222,7 @@ show: function _show(minor, filter, win) {
     var isSelector = this._hintMode.hasOwnProperty(minor);
 
     commandline.input((isSelector ? "ex:" : "") + this._hintMode.prompt, null, {
+        default: filter,
         onChange: function(e) { self._hintString != commandline.command && self._onInput(e); },
         onCancel: function () { self._removeHints(); },
     });
@@ -228,8 +235,10 @@ show: function _show(minor, filter, win) {
     this._usedTabKey = false;
     this._prevInput = "";
     this._canUpdate = false;
+    this._adjInline = adj;
 
     if (!win) win = content.window;
+    this._window = Cu.getWeakReference(win);
 
     this._generate(win);
 
@@ -261,8 +270,28 @@ show: function _show(minor, filter, win) {
 _showHints: function () {
     let pageHints = this._pageHints;
     let hintString = this._hintString;
+    var dummy = let (nop=function(){}) ({
+        style: {},
+        setAttribute: nop,
+        setAttributeNS: nop,
+        removeAttribute: nop,
+        removeAttributeNS: nop,
+    });
 
-    this._docs.forEach(function (e) e.root.style.display = "none");
+    this._docs.forEach(function (e) {
+        if (Cu.isDeadWrapper(e.root)) {
+            var items = pageHints;
+
+            e.root = dummy;
+            for (var i = e.start; i <= e.end; i++) {
+                var item = pageHints[i];
+                item.hint = dummy;
+                item.label = dummy;
+                item.rect_list = [];
+            }
+        }
+        e.root.style.display = "none";
+    });
     this._showActiveHint(null, this._hintNumber || 1);
 
     if (this._prevInput != "number") {
@@ -271,23 +300,22 @@ _showHints: function () {
 
         for (let i = 0, j = pageHints.length; i < j; ++i) {
             let item = pageHints[i];
+
             if (test(item.text)) {
                 kNum = validHints.length;
                 validHints[kNum] = item;
-                //item.hint.firstChild.setAttribute("number", hints._num2chars(kNum + 1));
-                var ri, rj = item.rect_list.length;
-                for (ri = 0; ri < rj; ri++)
-                    item.rect_list[ri].style.display = "";
-                item.label.style.display = "";
+                var display = "";
             } else {
                 item.chars = "";
-                var ri, rj = item.rect_list.length;
-                for (ri = 0; ri < rj; ri++)
-                    item.rect_list[ri].style.display = "none"
-                item.label.style.display = "none";
+                var display = "none";
             }
+            var ri, rj = item.rect_list.length;
+            for (ri = 0; ri < rj; ri++)
+                item.rect_list[ri].style.display = display;
+            item.label.style.display = display;
         }
 
+        //XXX: _num2chars が validHints.length 依存のため
         for (let i = 0, j = validHints.length; i < j; ++i) {
             let item = validHints[i];
             item.chars = item.showText ? hints._num2chars(i + 1, j) + ":" + item.text : hints._num2chars(i + 1, j);
@@ -317,6 +345,20 @@ _showHints: function () {
     }
 
     this._docs.forEach(function (e) e.root.style.display = "");
+
+    if (config.browser.markupDocumentViewer.authorStyleDisabled) {
+        var count = 0;
+        let css = [];
+        for (var { root } of this._docs) {
+            for (var elem of [root, ...root.querySelectorAll("[style]")]) {
+                elem.setAttributeNS(NS.uri, "hintstyle", count);
+                css.push(`[liberator|hintstyle="${count}"]{${elem.style.cssText}}`);
+                count++;
+            }
+        }
+        styles.addSheet(true, "hint-positions", "*", css.join("\n"));
+    }
+
     this._showActiveHint(this._hintNumber || 1);
 },
 _iterTags: function (win, screen) {
@@ -390,6 +432,36 @@ _iterTags: function (win, screen) {
             [text, showText] = this._getInputHint(node, doc);
         //} else if (objectName === "[object HTMLAreaElement]") {
         } else {
+            if (this._adjInline && !node.clientHeight) {
+                for (var c of node.getElementsByTagName("*")) {
+                    if (c.clientHeight) {
+                        let r = doc.createRange();
+                        r.selectNodeContents(c.parentNode);
+                        rects = r.getClientRects();
+                        r.detach();
+                        // merge
+                        if (rects.length > 1) {
+                            let prev = {}; // dummy
+                            let res = [];
+                            for (r of rects) {
+                                if (r.top === r.bottom || r.left === r.right) {
+                                } else if (r.top === prev.top && r.bottom === prev.bottom) {
+                                    prev.right = r.right;
+                                } else {
+                                    prev = HintsExt.Rect(r.left, r.top, r.right, r.bottom);
+                                    res[res.length] = prev;
+                                }
+                            }
+
+                            if (res.length) {
+                                rects = res;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
             text = node.textContent.toLowerCase();
 
             //if (!text.trim()) {
@@ -680,6 +752,8 @@ onEvent: function onEvent(event) {
 
         this._docs.forEach(function (root) {
             let doc = root.doc;
+            if (Cu.isDeadWrapper(doc)) return;
+
             let result = util.evaluateXPath("//*[@liberator:highlight='hints']", doc, null, true);
             let hints = [], e;
             while (e = result.iterateNext())
@@ -713,6 +787,46 @@ onEvent: function onEvent(event) {
         });
     },
     removeSimpleMap: function (key) delete this.simpleMaps[key],
+    redraw: function () {
+        var minor = this._submode;
+        var filter = this._hintString;
+        var win = this._window.get();
+        this.hide();
+        this.show(minor, filter, win);
+    },
+    toggleInlineAdj: function () {
+        var minor = this._submode;
+        var filter = this._hintString;
+        var win = this._window.get();
+        this.hide();
+        this._show({
+            minor: minor,
+            filter: filter,
+            win: this._window.get(),
+            adj: !this._adjInline,
+        });
+    },
+    moveActiveHint: function moveActiveHint(count) {
+        if (!count) count = 10;
+        var startTime = Date.now();
+        var items = [i for(i of this._validHints) if (i.label.style.display === "")];
+        var last = items.length - 1;
+        var oldNumber = this._hintNumber || 1;
+
+        var index = items.indexOf(this._validHints[oldNumber - 1]);
+        if (index === -1) index = 0;
+
+        if (index === 0 && count < 0) {
+            index = last;
+        } else if (count > 0 && index === last) {
+            index = 0;
+        } else {
+            index = Math.max(0, Math.min(index + count, last));
+        }
+        this._hintNumber = this._validHints.indexOf(items[index]) + 1;
+        this._showActiveHint(this._hintNumber, oldNumber);
+        Cu.reportError(Date.now() - startTime);
+    },
     relocation: function _relocation() {
         let time = Date.now();
         function sort(a, b) {
@@ -724,6 +838,11 @@ onEvent: function onEvent(event) {
         self._docs.forEach(function (root) {
             const doc = root.doc;
             const win = doc.defaultView;
+
+            if (root.start > root.end) {
+                return;
+            }
+
             const size = parseFloat(win.getComputedStyle(self._pageHints[root.start].label, null).fontSize) + 2;
             const lines = [];
 
@@ -768,7 +887,7 @@ onEvent: function onEvent(event) {
                 });
             });
         });
-        liberator.log(`relocation:${Date.now() - time} ms`);
+        liberator.log(`relocation: ${Date.now() - time}ms`);
     },
     relocation_transform: function relocation_transform() {
         if (this._pageHints.transform) return;
@@ -837,7 +956,7 @@ onEvent: function onEvent(event) {
                         position: absolute!important;
                         ${_Moz_}transform: ${s[transform]}!important;
                         ${_Moz_}transform-origin: ${s[transformOrigin]}!important;
-                        ${_Moz_}transform-style: ${s[transformStyle]}!important;
+                        ${_Moz_}transform-style:  ${s[transformStyle]}!important;
                         top:       ${parent.offsetTop}px!important;
                         left:      ${parent.offsetLeft}px!important;
                         height:    ${parent.offsetHeight}px!important;
@@ -903,22 +1022,34 @@ onEvent: function onEvent(event) {
                     if (!item.label) continue;
                     rect = item.hint.getBoundingClientRect();
                     item.label.style.cssText = `
-                        top: ${rect.top > 0 ? rect.top : 0}px;
-                        left: ${rect.left > 0 ? rect.left: 0}px;
+                        top:    ${rect.top > 0 ? rect.top : 0}px;
+                        left:   ${rect.left > 0 ? rect.left: 0}px;
                     `;
                 }
                 rootElement.appendChild(fragment_label);
             }
             range.detach();
         });
-        liberator.log("transform relocation: " + (Date.now() - tick) + "ms");
+        liberator.log(`transform relocation: ${Date.now() - tick}ms`);
         this._pageHints.transform = true;
     },
     addModeEx: function (mode, prompt, action, generate) {
         let hintMode = Hints.Mode(prompt, action);
         hintMode.generate = generate;
         this._hintModes[mode] = hintMode;
-    }
+    },
+    nodesFromRect: function nodesFromRect(win, screen) {
+        if (!screen) {
+            screen = {
+                left: 0,
+                top: 0,
+                right: win.innerWidth,
+                bottom: win.innerHeight,
+            };
+        }
+        return getUtils(win).nodesFromRect(
+            screen.left, screen.top, 0, screen.right, screen.bottom, 0, true, true);
+    },
 };
 this.Rect = HintsExt.Rect = function (left, top, right, bottom) ({
     left: left,
@@ -952,8 +1083,17 @@ let h = new HintsExt();
 modules.hints = h;
 hints.addModeEx("f", "Focus Frame", function(win) Buffer.focusedWindow = win, function (win, screen) [{rect: [screen], value: win}]);
 
-if (liberator.globalVariables["use_hints_ext_hinttags"]) {
-    options.hinttags = hinttags;
+if (liberator.globalVariables["use_hints_ext_hinttags"] && !options.get("het")) {
+    options.add(["hintexttags", "het"],
+        "XPath or query string of hintable elements activated by 'f' and 'F'",
+        "string", hinttags, { scope: Option.SCOPE_BOTH });
+    let defalutTags = Hints.Mode().tags.toString();
+    let queryTags = function () options.hintexttags;
+    for (let [a, obj] in Iterator(h._hintModes)) {
+        if (obj.tags == defalutTags && !obj.generate) {
+            h._hintModes[a] = Hints.Mode(obj[0], obj[1], queryTags);
+        }
+    }
 }
 if (liberator.globalVariables["use_hints_ext_extendedhinttags"]) {
     options.extendedhinttags = hinttags;
