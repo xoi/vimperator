@@ -576,6 +576,10 @@ createRootElement: function getRootElement(win) {
         cur.appendChild(box);
         cur = box;
     }
+    // for full zoom
+    cur.style.transformOrigin = "0 0";
+    cur.style.transform = `scale(${rect.width / win.innerWidth})`;
+
     root.style.display = "none";
     (doc.body || doc.documentElement || doc.querySelector("body")).appendChild(root);
     this._hintRoot = root;
