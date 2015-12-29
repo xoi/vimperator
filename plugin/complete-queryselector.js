@@ -64,10 +64,12 @@ let listPseudo = [
     "-moz-any"
 ];
 
-let listStyles = let (csssd = CSSStyleDeclaration.prototype)
-    (Object.getOwnPropertyNames ? Object.getOwnPropertyNames(csssd) : [a for (a in csssd)])
+let listStyles = (function () {
+    let csssd = CSSStyleDeclaration.prototype;
+    return (Object.getOwnPropertyNames ? Object.getOwnPropertyNames(csssd) : [a for (a in csssd)])
     .filter(function (css) csssd.__lookupGetter__(css))
     .map(function (css) css.replace(/[A-Z]/g, function (s) "-" + s.toLocaleLowerCase()));
+})();
 
 // { xxx:...
 //  ^<- offset pos
@@ -238,8 +240,9 @@ function complete(context, obj) {
     let selector = "";
     let attr;
     let separator = [" ", "+", "~", ">"];
+    var extra;
 
-    let [, type, sStart, sEnd, sFilter, extra] = parseSelector(0, context.filter);
+    [, type, sStart, sEnd, sFilter, extra] = parseSelector(0, context.filter);
 
     if (type === "err") {
         context.highlight(sEnd, sFilter, "SPELLCHECK");
@@ -271,7 +274,7 @@ function complete(context, obj) {
     context.advance(sFilter);
 
     let tags = [];
-    let attr = [];
+    attr = [];
     let clas = [];
     let ids = [];
 

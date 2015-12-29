@@ -281,13 +281,13 @@ _show: function _show(kwargs) {
 _showHints: function () {
     let pageHints = this._pageHints;
     let hintString = this._hintString;
-    var dummy = let (nop=function(){}) ({
+    var dummy = {
         style: {},
-        setAttribute: nop,
-        setAttributeNS: nop,
-        removeAttribute: nop,
-        removeAttributeNS: nop,
-    });
+        setAttribute: function(){},
+        setAttributeNS: function(){},
+        removeAttribute: function(){},
+        removeAttributeNS: function(){},
+    };
 
     this._hintRoot.style.display = "none";
     this._docs.forEach(function (e) {
@@ -727,6 +727,11 @@ onEvent: function onEvent(event) {
         case "<BS>": {
             const self = this;
 
+            if (this._prevInput === "text") {
+                editor.executeCommand("cmd_deleteCharBackward", 1);
+                break;
+            }
+
             if (this._hintNumber > 0 && !this._usedTabKey) {
                 this._showActiveHint(null, this._hintNumber);
                 let str = this._hintNumberStr;
@@ -1109,7 +1114,7 @@ let src = Hints.prototype._processHints.toSource()
     .replace("this._validHints[activeIndex];", "this._validHints[activeIndex].elem;")
     .replace("e.getAttribute", "e.elem.getAttribute")
     //.replace("_validHints[0]", "_validHints[0].elem")
-    .replace("let firstHref = this._validHints[0]", "let firstHref = let(e = this._validHints[0].elem) !e.getAttribute ? null : e")
+    .replace("let firstHref = this._validHints[0]", "let firstHref = !this._validHints[0].elem.getAttribute ? null : this._validHints[0].elem")
 ;
 
 HintsExt.prototype._processHints = liberator.eval("(function() " + src + ")()");
