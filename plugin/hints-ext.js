@@ -120,6 +120,12 @@ xml`<plugin name="hints-ext" version="0.0.3"
 (function () {
 if (parseFloat(Application.version) < 4) return;
 
+const userContext = liberator.eval("userContext", modules);
+const Hints       = liberator.eval("Hints",       modules);
+const Option      = liberator.eval("Option",      modules);
+const XHTML       = liberator.eval("XHTML",       modules);
+const NS          = liberator.eval("NS",          modules);
+
 var original = modules.hints;
 this.onUnload = function onUnload() {
     delete this.onUnload;
