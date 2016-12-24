@@ -429,7 +429,7 @@ _iterTags: function iterTag(win, screen) {
     }
     if (typeof(selector) == "string") {
         if (selector[0] == "/") { // xpath
-            matcher = makeMatcher((e for(e in util.evaluateXPath(selector, doc, null, true))));
+            matcher = makeMatcher((function*() { for(let e in util.evaluateXPath(selector, doc, null, true)) { yield e; } })());
         } else { // selector
             matcher = function (node) node.mozMatchesSelector(selector);
         }
@@ -871,7 +871,7 @@ onEvent: function onEvent(event) {
     moveActiveHint: function moveActiveHint(count) {
         if (!count) count = 10;
         var startTime = Date.now();
-        var items = [i for(i of this._validHints) if (i.label.style.display === "")];
+        var items = [for(i of this._validHints) if (i.label.style.display === "") i];
         var last = items.length - 1;
         var oldNumber = this._hintNumber || 1;
 
