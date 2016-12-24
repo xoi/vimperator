@@ -118,7 +118,7 @@ xml`<plugin name="hints-ext" version="0.0.3"
 //}}}
 
 (function () {
-if (parseFloat(Application.version) < 4) return;
+if (parseFloat(Services.appinfo.platformVersion) < 4) return;
 
 const userContext = liberator.eval("userContext", modules);
 const Hints       = liberator.eval("Hints",       modules);
